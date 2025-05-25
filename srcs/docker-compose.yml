@@ -1,0 +1,84 @@
+services:
+  back:
+    image: 42-matcha/back:${VERSION:-latest}
+    build:
+      context: ./back
+      dockerfile: Dockerfile
+    restart: always
+    # 本番環境では開ける必要がない。開発では、直接リクエストを送れたりするので開けといた方が便利。
+    ports:
+      - "${BACK_PORT}:3000"
+    env_file: .env
+
+    depends_on:
+      db:
+        condition: service_healthy # ヘルスチェックが通るまで待つ
+    networks:
+      - app-network
+
+  # front:
+  #   image: 42-matcha/front:${VERSION:-latest}
+  #   build:
+  #     context: ./front
+  #     dockerfile: Dockerfile
+  #   restart: always
+  #   # 本番環境では開ける必要がない。開発では、直接リクエストを送れたりするので開けといた方が便利。
+  #   ports:
+  #     - "${FRONT_PORT}:5173"
+  #   env_file: .env
+  #   depends_on:
+  #     - back
+  #   networks:
+  #     - app-network
+
+  db:
+    image: 42-matcha/db:${VERSION:-latest}
+    build:
+      context: ./db
+      dockerfile: Dockerfile
+    restart: always
+    env_file: .env
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "${MYSQL_USER}", "-p${MYSQL_PASSWORD}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    volumes:
+      - mysql_data:/var/lib/mysql  # /data は不要
+    networks:
+      - app-network
+
+  proxy:
+    image: 42-matcha/proxy:${VERSION:-latest}
+    build:
+      context: ./proxy
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "${PROXY_PORT}:443"
+    env_file: .env
+    depends_on:
+      # - front
+      - back
+    networks:
+      - app-network
+      
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    ports:
+      - "8025:8025" # MailhogのWebとAPI用のポート
+      - "1025:1025" # SMTPポート
+    restart: always  # 他のサービスと合わせて追加することをお勧めします
+    networks:
+      - app-network  # ←この行を追加
+
+
+volumes:
+  mysql_data:
+
+networks:
+  app-network:
+    name: 42-matcha
+    driver: bridge
